@@ -2,6 +2,8 @@ package network
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"time"
 
 	measurementutil "k8s.io/perf-tests/clusterloader2/pkg/measurement/util"
@@ -12,7 +14,7 @@ import (
 	"k8s.io/perf-tests/clusterloader2/pkg/framework"
 
 	"k8s.io/klog"
-	"k8s.io/perf-tests/clusterloader2/pkg/errors"
+	clusldrerr "k8s.io/perf-tests/clusterloader2/pkg/errors"
 	"k8s.io/perf-tests/clusterloader2/pkg/framework/client"
 	"k8s.io/perf-tests/clusterloader2/pkg/measurement"
 	"k8s.io/perf-tests/clusterloader2/pkg/util"
@@ -37,6 +39,7 @@ type networkPerfMetricsMeasurement struct {
 	podRatio        string
 	testDuration    int
 	protocol        string
+	service         string
 	templateMapping map[string]interface{}
 	startTime       time.Time
 }
@@ -60,7 +63,7 @@ func (npm *networkPerfMetricsMeasurement) Execute(config *measurement.Config) ([
 		npm.start(config)
 	case "gather":
 		summary, err := npm.gather(config)
-		if err != nil && !errors.IsMetricViolationError(err) {
+		if err != nil && !clusldrerr.IsMetricViolationError(err) {
 			klog.Error("Error in metrics:", err)
 			return nil, err
 		}
@@ -87,9 +90,15 @@ func (npm *networkPerfMetricsMeasurement) start(config *measurement.Config) erro
 		klog.Info("Error starting measurement:", err)
 	}
 
-	//Create worker pods using manifest files
-	if err := npm.createWorkerPods(); err != nil {
-		return err
+	if npm.service != "" {
+		_, serverPods, _ := DeriveClientServerPodNum(npm.podRatio)
+		npm.createServices(serverPods)
+		//Create worker pods using manifest files
+		npm.createDeployments(serverPods)
+	} else {
+
+		//Create worker pods using manifest files
+		npm.createDeployments(1)
 	}
 
 	//wait for specified num of worker pods to be ready
@@ -117,9 +126,21 @@ func (npm *networkPerfMetricsMeasurement) initialize(config *measurement.Config)
 	return nil
 }
 
-func (npm *networkPerfMetricsMeasurement) createWorkerPods() error {
-	klog.Info("createWorkerPods:", manifestsPathPrefix)
-	return npm.framework.ApplyTemplatedManifests(manifestsPathPrefix, npm.templateMapping)
+func (npm *networkPerfMetricsMeasurement) createDeployments(num int) {
+	klog.Info("createWorkerPods:", manifestsDeplPathPrefix)
+	for i := 0; i < num; i++ {
+		npm.templateMapping["WorkerName"] = "worker-" + strconv.Itoa(i)
+		npm.framework.ApplyTemplatedManifests(manifestsDeplPathPrefix, npm.templateMapping)
+	}
+}
+
+func (npm *networkPerfMetricsMeasurement) createServices(num int) {
+	klog.Info("createSvcs:", manifestsSvcPathPrefix)
+
+	for i := 0; i < num; i++ {
+		npm.templateMapping["WorkerName"] = "worker-" + strconv.Itoa(i)
+		npm.framework.ApplyTemplatedManifests(manifestsSvcPathPrefix, npm.templateMapping)
+	}
 }
 
 func (npm *networkPerfMetricsMeasurement) waitForWorkerPodsReady() error {
@@ -195,6 +216,7 @@ func (npm *networkPerfMetricsMeasurement) validate(config *measurement.Config) e
 	var ratio, protocol string
 	var duration int
 	var err error
+	var service string
 
 	if duration, err = util.GetInt(config.Params, "duration"); err != nil {
 		return err
@@ -205,6 +227,10 @@ func (npm *networkPerfMetricsMeasurement) validate(config *measurement.Config) e
 	}
 	if protocol, err = util.GetString(config.Params, "protocol"); err != nil {
 		return err
+	}
+	service, _ = util.GetString(config.Params, "service")
+	if service != "" && service != "ClusterIP" {
+		return errors.New("Invalid service")
 	}
 
 	if protocol != Protocol_TCP && protocol != Protocol_UDP && protocol != Protocol_HTTP {

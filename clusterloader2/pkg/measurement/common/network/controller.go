@@ -87,7 +87,8 @@ var metricUnitMap = map[string]string{
 	ResponseTime: "seconds",
 }
 
-const manifestsPathPrefix = "$GOPATH/src/k8s.io/perf-tests/clusterloader2/pkg/measurement/common/network/manifests/*.yaml"
+const manifestsDeplPathPrefix = "$GOPATH/src/k8s.io/perf-tests/clusterloader2/pkg/measurement/common/network/manifests/*.yaml"
+const manifestsSvcPathPrefix = "$GOPATH/src/k8s.io/perf-tests/clusterloader2/pkg/measurement/common/network/manifests/*.yaml"
 
 // DataItem is the data point.
 type DataItem struct {
@@ -112,7 +113,7 @@ func populateWorkerPodList(data *WorkerPodData) error {
 	}
 }
 
-func deriveClientServerPodNum(ratio string) (int, int, string) {
+func DeriveClientServerPodNum(ratio string) (int, int, string) {
 	var podNumber []string
 	var clientPodNum, serverPodNum int
 	if strings.Contains(ratio, RatioSeparator) {
@@ -141,7 +142,7 @@ func deriveClientServerPodNum(ratio string) (int, int, string) {
 func ExecuteTest(ratio string, duration int, protocol string) {
 	var clientPodNum, serverPodNum int
 	var ratioType string
-	clientPodNum, serverPodNum, ratioType = deriveClientServerPodNum(ratio)
+	clientPodNum, serverPodNum, ratioType = DeriveClientServerPodNum(ratio)
 	klog.Info("clientPodNum:%d ,  serverPodNum: %d, ratioType: %s", clientPodNum, serverPodNum, ratioType)
 
 	switch ratioType {

@@ -15,6 +15,7 @@ steps:
         duration: 10
         ratio: "50:50"
         protocol: HTTP 
+        service: ClusterIP
 - name: Wait for 15 secs controller to be up
   measurements:
     - Identifier: Wait
