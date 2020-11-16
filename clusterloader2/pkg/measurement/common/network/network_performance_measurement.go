@@ -24,7 +24,9 @@ package network
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	measurementutil "k8s.io/perf-tests/clusterloader2/pkg/measurement/util"
@@ -41,7 +43,14 @@ import (
 	"k8s.io/perf-tests/clusterloader2/pkg/util"
 )
 
-const manifestsPathPrefix = "$GOPATH/src/k8s.io/perf-tests/clusterloader2/pkg/measurement/common/network/manifests/*.yaml"
+var manifestsPathPrefix = "$GOPATH/src/k8s.io/perf-tests/clusterloader2/pkg/measurement/common/network/manifests/*.yaml"
+
+const secIfc = "k8s.v1.cni.cncf.io/networks"
+const nwStatus = "k8s.v1.cni.cncf.io/networks-status"
+
+const manifestPathEnvVar = "MANIFESTS_PATH"
+
+var ifcSet bool
 
 func init() {
 	klog.Info("Registering Network Measurement")
@@ -131,6 +140,10 @@ func (npm *networkPerfMetricsMeasurement) start(config *measurement.Config) erro
 }
 
 func (npm *networkPerfMetricsMeasurement) initialize(config *measurement.Config) error {
+	if mfPath, set := os.LookupEnv(manifestPathEnvVar); set {
+		manifestsPathPrefix = mfPath
+		klog.Info("Set manifest path from Env variable:", manifestsPathPrefix)
+	}
 	podReplicas, err := util.GetInt(config.Params, "podReplicas")
 	if err != nil {
 		return err
@@ -174,7 +187,7 @@ func (npm *networkPerfMetricsMeasurement) checkWorkerPodsReady() (bool, error) {
 }
 
 func (npm *networkPerfMetricsMeasurement) getWeightedTimerValuesForPoll() (time.Duration, time.Duration) {
-	var weightedPodReadyTimeout = npm.podReplicas * 3
+	var weightedPodReadyTimeout = npm.podReplicas * 5
 	podReadyTimeout := time.Duration(weightedPodReadyTimeout) * time.Second
 
 	var workerPodReadyInterval time.Duration
@@ -194,12 +207,54 @@ func (npm *networkPerfMetricsMeasurement) storeWorkerPods() {
 	time.Sleep(5 * time.Second)
 	options := metav1.ListOptions{}
 	pods, _ := npm.k8sClient.CoreV1().Pods(npm.namespace).List(context.TODO(), options)
-	for _, pod := range pods.Items {
-		if pod.Status.PodIP != "" {
-			podData := &workerPodData{podName: pod.Name, podIp: pod.Status.PodIP, workerNode: pod.Spec.NodeName}
-			populateWorkerPodList(podData)
-			podCount++
+	//TODO below code is in progress code, much of it is added just for debugging
+	ifcSet = true
+	if !ifcSet {
+		for _, pod := range pods.Items {
+			out, _ := json.Marshal(pod)
+			klog.Info("POD:", string(out))
+			if pod.Status.PodIP != "" {
+				podData := &workerPodData{podName: pod.Name, podIp: pod.Status.PodIP, workerNode: pod.Spec.NodeName}
+				populateWorkerPodList(podData)
+				podCount++
+			}
+
 		}
+	} else {
+		pods, _ = npm.k8sClient.CoreV1().Pods(npm.namespace).List(context.TODO(), options)
+		for _, pod := range pods.Items {
+			// out, _ := json.Marshal(pod.ObjectMeta.Annotations)
+			ifcName := pod.ObjectMeta.Annotations[secIfc]
+			podNwStatusArr := pod.ObjectMeta.Annotations[nwStatus]
+			klog.Info("Network Status Array:", podNwStatusArr)
+			// var nwStatus []NetworkStatus
+			var nwStatus interface{}
+			if err := json.Unmarshal([]byte(podNwStatusArr), &nwStatus); err != nil {
+				klog.Error("Unable to unmarshal network status:", err)
+			}
+			m := nwStatus.([]interface{})
+
+			for _, ifcDet := range m {
+				det := ifcDet.(map[string]interface{})
+				name := det["name"].(string)
+				if name == npm.namespace+"/"+ifcName {
+
+					ip := det["ips"].([]interface{})
+					ipstr := ip[0].(string)
+					klog.Info("ips:", ipstr)
+					if ipstr != "" {
+						podData := &workerPodData{podName: pod.Name, podIp: ipstr, workerNode: pod.Spec.NodeName}
+						populateWorkerPodList(podData)
+						podCount++
+					}
+				}
+
+			}
+			klog.Info("Network status struct:", m)
+			klog.Info("PLUGIN NAME:", ifcName)
+
+		}
+
 	}
 
 	klog.Infof("Actual Pods configured: %v, Pods with IPs: %v", npm.podReplicas, podCount)
