@@ -22,6 +22,10 @@ import (
 	"net"
 	"time"
 
+	"k8s.io/client-go/restmapper"
+
+	"k8s.io/klog"
+
 	apiv1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -253,6 +257,7 @@ func ListEvents(c clientset.Interface, namespace string, name string, options ..
 
 // DeleteStorageClass deletes storage class with given name.
 func DeleteStorageClass(c clientset.Interface, name string) error {
+
 	deleteFunc := func() error {
 		return c.StorageV1().StorageClasses().Delete(context.TODO(), name, metav1.DeleteOptions{})
 	}
@@ -260,12 +265,33 @@ func DeleteStorageClass(c clientset.Interface, name string) error {
 }
 
 // CreateObject creates object based on given object description.
-func CreateObject(dynamicClient dynamic.Interface, namespace string, name string, obj *unstructured.Unstructured, options ...*APICallOptions) error {
+func CreateObject(c clientset.Interface, dynamicClient dynamic.Interface, namespace string, name string, obj *unstructured.Unstructured, options ...*APICallOptions) error {
+	groupResources, err := restmapper.GetAPIGroupResources(c.Discovery())
+	if err != nil {
+		return err
+	}
+	rm := restmapper.NewDiscoveryRESTMapper(groupResources)
 	gvk := obj.GroupVersionKind()
-	gvr, _ := meta.UnsafeGuessKindToResource(gvk)
+	gk := schema.GroupKind{Group: gvk.Group, Kind: gvk.Kind}
+	// gk.Group = gvk.Group
+	// gk.Kind = gvk.Kind
+	// var apiGrpRes restmapper.APIGroupResources
+	// apiGrpRes.Group.Name = gvk.Group
+	// apiGrpRes.Group.Versions = []metav1.GroupVersionForDiscovery{gvfordisc}
+	// restm := restmapper.NewDiscoveryRESTMapper([]*restmapper.APIGroupResources{&apiGrpRes})
+
+	// gvr, _ := meta.UnsafeGuessKindToResource(gvk)
+	// restm := restmapper.NewDiscoveryRESTMapper(gvs)
+	// a, _ := rm.ResourceFor(gvs)
+	b, _ := rm.RESTMappings(gk)
+	// klog.Info("ResourcesFor:", a, " ", gvs)
+	klog.Info("Restmapping:", *b[0], " ", b[0].Resource.Resource)
+	gvr := b[0].Resource
 	obj.SetName(name)
 	createFunc := func() error {
+		klog.Info("NS:", namespace, " Name:", name, " GVK:", gvk, " Object:", obj, "GVR:", gvr)
 		_, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+		klog.Info("Error:", err)
 		return err
 	}
 	options = append(options, Allow(apierrs.IsAlreadyExists))

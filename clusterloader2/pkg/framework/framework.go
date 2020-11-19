@@ -204,7 +204,7 @@ func (f *Framework) DeleteNamespaces(namespaces []string) *errors.ErrorList {
 
 // CreateObject creates object base on given object description.
 func (f *Framework) CreateObject(namespace string, name string, obj *unstructured.Unstructured, options ...*client.APICallOptions) error {
-	return client.CreateObject(f.dynamicClients.GetClient(), namespace, name, obj, options...)
+	return client.CreateObject(f.GetClientSets().GetClient(), f.dynamicClients.GetClient(), namespace, name, obj, options...)
 }
 
 // PatchObject updates object (using patch) with given name using given object description.
