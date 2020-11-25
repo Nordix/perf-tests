@@ -14,13 +14,13 @@ steps:
         podReplicas: 2
         duration: 10
         ratio: 1:1
-        protocol: HTTP 
+        protocol: UDP
 - name: Wait for 15 secs controller to be up
   measurements:
     - Identifier: Wait
       Method: Sleep
       Params:
-        duration: 15s
+        duration: 20s
 - name: Gather
   measurements:
     - Identifier: NetworkPerformanceMetrics

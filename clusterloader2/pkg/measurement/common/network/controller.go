@@ -20,12 +20,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"math"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	clientset "k8s.io/client-go/kubernetes"
 	measurementutil "k8s.io/perf-tests/clusterloader2/pkg/measurement/util"
@@ -112,7 +113,7 @@ func executeTest(ratio string, duration int, protocol string) {
 
 	switch ratioType {
 	case OneToOne:
-		exec1To1Test(duration, protocol)
+		fallthrough
 	case ManyToMany:
 		execNToMTest(duration, protocol)
 	default:
