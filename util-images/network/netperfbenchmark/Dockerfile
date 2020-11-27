@@ -1,13 +1,13 @@
-FROM golang:1.15.2-alpine3.12 AS build-env
-ARG gopkg=k8s.io/perf-tests/util-images/phases/netperfbenchmark
+FROM golang:1.15.2 AS build-env
+ARG gopkg=k8s.io/perf-tests/util-images/network/netperfbenchmark
 
 ADD [".", "/go/src/$gopkg"]
 
 #ENV GO111MODULE on
 WORKDIR /go/src/$gopkg
-RUN CGO_ENABLED=0 go build -o /workspace/phases ./cmd
+RUN CGO_ENABLED=0 go build -o /workspace/network ./cmd
 
-FROM  alpine:3.12
+FROM  golang:1.15.2-alpine3.12
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
 RUN apk update \
@@ -27,5 +27,5 @@ RUN rm -rf siege-${VERSION}.tar.gz
 RUN cd siege-${VERSION} && ./configure &&  make install
 
 WORKDIR /workspace
-COPY --from=build-env /workspace/phases .
-ENTRYPOINT ["/workspace/phases"]
+COPY --from=build-env /workspace/network .
+ENTRYPOINT ["/workspace/network"]
