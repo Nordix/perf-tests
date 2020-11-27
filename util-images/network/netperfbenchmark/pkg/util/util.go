@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-//Package util contains utility methods for worker
+// Package util contains utility methods for worker
 package util
 
 import (
@@ -28,21 +28,21 @@ import (
 	"k8s.io/klog"
 )
 
-//Protocols supported
+// Protocols supported
 const (
 	ProtocolTCP  = "TCP"
 	ProtocolUDP  = "UDP"
 	ProtocolHTTP = "HTTP"
 )
 
-//Number of metrics for each protocol
+// Number of metrics for each protocol
 const (
 	tcpMtrCnt   = 2
 	udpMtrCnt   = 11
 	httpMetrCnt = 12
 )
 
-//Iperf results vary from protocol,required for proper parsing
+// Iperf results vary from protocol,required for proper parsing
 const (
 	zeroFmtTCP         = "0.0"
 	fractionZeroFmtTCP = ".0"
@@ -50,13 +50,13 @@ const (
 	fractionZeroFmtUDP = ".00"
 )
 
-//Function to be applied for each metric for aggregation
+// Function to be applied for each metric for aggregation
 var (
 	iperfUDPFn = []string{"", "", "", "Sum", "Sum", "Sum", "Sum", "Sum", "Avg", "Avg", "Min", "Max", "Avg", "Sum"}
 	iperfTCPFn = []string{"", "", "", "Sum", "Avg"}
 )
 
-//ParseResult parses the response received for each protocol type
+// ParseResult parses the response received for each protocol type
 func ParseResult(protType string, result []string, testDuration string) ([]float64, error) {
 	klog.Info("Parsing response for ", protType)
 	switch protType {
@@ -163,7 +163,7 @@ func parseSiegeResponse(result []string) []float64 {
 	return sumResult
 }
 
-//GetValuesFromURL returns a map with values parsed from http request,for attributes specified in paramsToSearch
+// GetValuesFromURL returns a map with values parsed from http request,for attributes specified in paramsToSearch
 func GetValuesFromURL(req *http.Request, paramsToSearch []string) (map[string]string, error) {
 	values := req.URL.Query()
 	paramMap := make(map[string]string)
