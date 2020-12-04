@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-/*
- * Package network captures network performance metrics
- * for protocol TCP,UDP,HTTP etc. The metrics are collected for baseline (1:1),
- * scale (N:M) pod ratios.Client and server pods located on different worker
- * nodes exchange traffic for specified time to measure the performance metrics.
- */
+//Package network captures network performance metrics
+//for protocol TCP,UDP,HTTP etc. The metrics are collected for baseline (1:1),
+//scale (N:M) pod ratios.Client and server pods located on different worker
+//nodes exchange traffic for specified time to measure the performance metrics.
+
 package network
 
 import (
@@ -41,7 +40,20 @@ import (
 	"k8s.io/perf-tests/clusterloader2/pkg/util"
 )
 
-const manifestsPathPrefix = "$GOPATH/src/k8s.io/perf-tests/clusterloader2/pkg/measurement/common/network/manifests/*.yaml"
+const (
+	//Path from where manifest yaml files are picked up.
+	manifestsPathPrefix = "$GOPATH/src/k8s.io/perf-tests/clusterloader2/pkg/measurement/common/network/manifests/*.yaml"
+
+	//podReadyTimeOutFactor is used in wait.poll() and is the timeout value.
+	//We assume 4 pods will be created per second.
+	podReadyTimeOutFactor = 0.25
+
+	//podReadyPollInterval is used in wait.poll(). Every 2seconds,check whether pods are ready.
+	podReadyPollInterval = 2
+
+	//networkPerfMetricsName indicates the measurement name
+	networkPerfMetricsName = "NetworkPerformanceMetrics"
+)
 
 func init() {
 	klog.Info("Registering Network Measurement")
@@ -64,6 +76,7 @@ type networkPerfMetricsMeasurement struct {
 	protocol        string
 	templateMapping map[string]interface{}
 	startTime       time.Time
+	cntrl           *controller
 }
 
 func (npm *networkPerfMetricsMeasurement) Execute(config *measurement.Config) ([]measurement.Summary, error) {
@@ -106,7 +119,8 @@ func (npm *networkPerfMetricsMeasurement) start(config *measurement.Config) erro
 		return err
 	}
 
-	npm.startCtrl()
+	npm.cntrl.startController()
+
 	//create namespace for the worker-pods
 	npm.namespace = netperfNamespace
 	if err := client.CreateNamespace(npm.k8sClient, netperfNamespace); err != nil {
@@ -126,7 +140,7 @@ func (npm *networkPerfMetricsMeasurement) start(config *measurement.Config) erro
 
 	npm.storeWorkerPods()
 
-	executeTest(npm.podRatio, npm.testDuration, npm.protocol)
+	npm.cntrl.executeTest()
 	return nil
 }
 
@@ -137,6 +151,11 @@ func (npm *networkPerfMetricsMeasurement) initialize(config *measurement.Config)
 	}
 	klog.Info("Total configured pod num:", podReplicas)
 	npm.k8sClient = config.ClusterFramework.GetClientSets().GetClient()
+	npm.cntrl = &controller{}
+	npm.cntrl.podRatio = npm.podRatio
+	npm.cntrl.protocol = npm.protocol
+	npm.cntrl.testDuration = npm.testDuration
+	npm.cntrl.k8sClient = npm.k8sClient
 	npm.framework = config.ClusterFramework
 	npm.podReplicas = podReplicas
 	npm.templateMapping = map[string]interface{}{"Replicas": podReplicas}
@@ -149,8 +168,8 @@ func (npm *networkPerfMetricsMeasurement) createWorkerPods() error {
 }
 
 func (npm *networkPerfMetricsMeasurement) waitForWorkerPodsReady() error {
-	workerPodReadyInterval, weightedPodReadyTimeout := npm.getWeightedTimerValuesForPoll()
-	return wait.Poll(workerPodReadyInterval, weightedPodReadyTimeout, npm.checkWorkerPodsReady)
+	podReadyPollInterval, weightedPodReadyTimeout := npm.getWeightedTimerValuesForPoll()
+	return wait.Poll(podReadyPollInterval, weightedPodReadyTimeout, npm.checkWorkerPodsReady)
 }
 
 func (npm *networkPerfMetricsMeasurement) checkWorkerPodsReady() (bool, error) {
@@ -174,14 +193,14 @@ func (npm *networkPerfMetricsMeasurement) checkWorkerPodsReady() (bool, error) {
 }
 
 func (npm *networkPerfMetricsMeasurement) getWeightedTimerValuesForPoll() (time.Duration, time.Duration) {
-	var weightedPodReadyTimeout = npm.podReplicas * 3
+	var weightedPodReadyTimeout = float32(npm.podReplicas) * podReadyTimeOutFactor
 	podReadyTimeout := time.Duration(weightedPodReadyTimeout) * time.Second
 
-	var workerPodReadyInterval time.Duration
-	workerPodReadyInterval = time.Duration(2) * time.Second
+	var pollInterval time.Duration
+	pollInterval = time.Duration(podReadyPollInterval) * time.Second
 
-	klog.Info("waitForWorkerPodsReady:  , podReadyTimeout: ", workerPodReadyInterval, podReadyTimeout)
-	return workerPodReadyInterval, podReadyTimeout
+	klog.Info("podReadyPollInterval:", pollInterval, ", podReadyTimeout: ", podReadyTimeout)
+	return pollInterval, podReadyTimeout
 
 }
 
@@ -191,13 +210,12 @@ func (*networkPerfMetricsMeasurement) String() string {
 
 func (npm *networkPerfMetricsMeasurement) storeWorkerPods() {
 	var podCount int
-	time.Sleep(5 * time.Second)
 	options := metav1.ListOptions{}
 	pods, _ := npm.k8sClient.CoreV1().Pods(npm.namespace).List(context.TODO(), options)
 	for _, pod := range pods.Items {
 		if pod.Status.PodIP != "" {
 			podData := &workerPodData{podName: pod.Name, podIp: pod.Status.PodIP, workerNode: pod.Spec.NodeName}
-			populateWorkerPodList(podData)
+			npm.cntrl.populateWorkerPodList(podData)
 			podCount++
 		}
 	}
@@ -206,15 +224,15 @@ func (npm *networkPerfMetricsMeasurement) storeWorkerPods() {
 }
 
 func (npm *networkPerfMetricsMeasurement) gather() (measurement.Summary, error) {
-	formMetricsForDisplay(npm.podRatio, npm.protocol)
+	npm.cntrl.formMetricsForDisplay()
 	content, err := util.PrettyPrintJSON(&measurementutil.PerfData{
 		Version:   "v1",
-		DataItems: networkPerfRespForDisp.DataItems,
+		DataItems: npm.cntrl.networkPerfRespForDisp.DataItems,
 	})
 	if err != nil {
 		klog.Info("Pretty Print to Json Err:", err)
 	}
-	return measurement.CreateSummary(npm.String()+networkPerfRespForDisp.Client_Server_Ratio+networkPerfRespForDisp.Protocol+networkPerfRespForDisp.Service, "json", content), nil
+	return measurement.CreateSummary(npm.String()+npm.cntrl.networkPerfRespForDisp.Client_Server_Ratio+npm.cntrl.networkPerfRespForDisp.Protocol+npm.cntrl.networkPerfRespForDisp.Service, "json", content), nil
 }
 
 func (npm *networkPerfMetricsMeasurement) validate(config *measurement.Config) error {
@@ -241,7 +259,7 @@ func (npm *networkPerfMetricsMeasurement) validate(config *measurement.Config) e
 		return err
 	}
 
-	if protocol != Protocol_TCP && protocol != Protocol_UDP && protocol != Protocol_HTTP {
+	if protocol != ProtocolTCP && protocol != ProtocolUDP && protocol != ProtocolHTTP {
 		return fmt.Errorf("invalid protocol , supported ones are TCP,UDP,HTTP")
 	}
 
@@ -267,5 +285,5 @@ func (npm *networkPerfMetricsMeasurement) Dispose() {
 	}
 
 	//Closing the channels used
-	closeCh()
+	npm.cntrl.closeCh()
 }

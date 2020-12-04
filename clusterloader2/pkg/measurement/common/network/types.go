@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	Protocol_TCP  = "TCP"
-	Protocol_UDP  = "UDP"
-	Protocol_HTTP = "HTTP"
+	ProtocolTCP  = "TCP"
+	ProtocolUDP  = "UDP"
+	ProtocolHTTP = "HTTP"
 )
 
 //TCP result array Index mapping
@@ -63,11 +63,9 @@ const (
 	HTTPShortestTx
 )
 
-const RatioSeparator = ":"
-
 const (
-	networkPerfMetricsName = "NetworkPerformanceMetrics"
-	netperfNamespace       = "netperf"
+	RatioSeparator   = ":"
+	netperfNamespace = "netperf"
 )
 
 //WorkerPodData represents details of Pods running on worker node
@@ -118,12 +116,8 @@ const (
 )
 
 const (
-	TCP_Server = iota
-	TCP_Client
-	UDP_Server
-	UDP_Client
-	HTTP_Server
-	HTTP_Client
+	Server = iota
+	Client
 )
 
 const (
@@ -133,23 +127,19 @@ const (
 )
 
 const (
-	Perc05        = "Perc05"
-	Perc50        = "Perc50"
-	Perc95        = "Perc95"
-	Min           = "min"
-	Max           = "max"
-	Avg           = "avg"
-	value         = "value"
-	Num_Pod_Pairs = "Num_Pod_Pairs"
+	Perc05 = "Perc05"
+	Perc50 = "Perc50"
+	Perc95 = "Perc95"
+	Min    = "min"
+	Max    = "max"
+	Avg    = "avg"
+	value  = "value"
 )
 
-var httpPathMap = map[int]string{
-	TCP_Server:  "startTCPServer",
-	TCP_Client:  "startTCPClient",
-	UDP_Server:  "startUDPServer",
-	UDP_Client:  "startUDPClient",
-	HTTP_Server: "startHTTPServer",
-	HTTP_Client: "startHTTPClient",
+var httpPathMap = map[string]map[int]string{
+	ProtocolTCP:  map[int]string{Server: "startTCPServer", Client: "startTCPClient"},
+	ProtocolUDP:  map[int]string{Server: "startUDPServer", Client: "startUDPClient"},
+	ProtocolHTTP: map[int]string{Server: "startHTTPServer", Client: "startHTTPClient"},
 }
 
 const (
